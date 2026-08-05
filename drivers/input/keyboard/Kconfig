@@ -828,4 +828,6 @@ config KEYBOARD_CYPRESS_SF
 	  To compile this driver as a module, choose M here: the
 	  module will be called cypress-sf.
 
+source "drivers/input/keyboard/nanosic_driver/Kconfig"
+
 endif
