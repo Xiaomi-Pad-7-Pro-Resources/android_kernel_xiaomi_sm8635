@@ -115,7 +115,6 @@ static int nanosic_803_probe(struct i2c_client *client, const struct i2c_device_
     u32 irq_flags = IRQF_TRIGGER_FALLING | IRQF_ONESHOT;
     int reset_pin=-1;
     int status_pin=-1;
-    int vdd_pin=-1;
     int sleep_pin=-1;
     struct nano_i2c_client* I2client=NULL;
 
@@ -142,6 +141,19 @@ static int nanosic_803_probe(struct i2c_client *client, const struct i2c_device_
         return -ENODEV;
     }
 
+    /* Power the chip from the vdd/dvdd supplies, as the stock driver does. */
+    ret = Nanosic_regulator_init(&client->dev, of_node);
+    if (ret < 0) {
+        dbgprint(ERROR_LEVEL,"nanosic_803_probe, regulator init failed:%d\n", ret);
+        return ret;
+    }
+
+    ret = Nanosic_switch_regulator(true);
+    if (ret < 0) {
+        dbgprint(ERROR_LEVEL,"nanosic_803_probe, regulator enable failed:%d\n", ret);
+        return ret;
+    }
+
     irq_pin = of_get_named_gpio_flags(of_node, "irq_pin", 0,
                                       (enum of_gpio_flags *)&irq_flags);
     dbgprint(ALERT_LEVEL,"irq_pin=%d,irq_flags=%d\n", irq_pin,irq_flags);
@@ -149,8 +161,6 @@ static int nanosic_803_probe(struct i2c_client *client, const struct i2c_device_
     dbgprint(ALERT_LEVEL,"reset_pin=%d\n", reset_pin);
     status_pin = of_get_named_gpio_flags(of_node, "status_pin", 0, NULL);
     dbgprint(ALERT_LEVEL,"status_pin=%d\n", status_pin);
-    vdd_pin = of_get_named_gpio_flags(of_node, "vdd_pin", 0, NULL);
-    dbgprint(ALERT_LEVEL,"vdd_pin=%d\n", vdd_pin);
     sleep_pin = of_get_named_gpio_flags(of_node, "sleep_pin", 0, NULL);
     dbgprint(ALERT_LEVEL,"sleep_pin=%d\n", sleep_pin);
     gpio_hall_n_pin = of_get_named_gpio_flags(of_node, "hall_n_pin", 0, NULL);
@@ -159,15 +169,17 @@ static int nanosic_803_probe(struct i2c_client *client, const struct i2c_device_
              gpio_hall_n_pin, gpio_hall_s_pin);
 
     if (irq_pin == -EPROBE_DEFER || reset_pin == -EPROBE_DEFER ||
-        status_pin == -EPROBE_DEFER || vdd_pin == -EPROBE_DEFER ||
-        sleep_pin == -EPROBE_DEFER)
+        status_pin == -EPROBE_DEFER || sleep_pin == -EPROBE_DEFER) {
+        Nanosic_switch_regulator(false);
         return -EPROBE_DEFER;
+    }
     if (!gpio_is_valid(irq_pin) || !gpio_is_valid(reset_pin) ||
-        !gpio_is_valid(status_pin) || !gpio_is_valid(vdd_pin) ||
-        !gpio_is_valid(sleep_pin))
+        !gpio_is_valid(status_pin) || !gpio_is_valid(sleep_pin)) {
+        Nanosic_switch_regulator(false);
         return -EINVAL;
+    }
 
-    ret = Nanosic_GPIO_register(vdd_pin,reset_pin,status_pin,irq_pin,sleep_pin);
+    ret = Nanosic_GPIO_register(reset_pin,status_pin,irq_pin,sleep_pin);
     if(ret < 0) {
         dbgprint(ERROR_LEVEL,"GPIO register ERROR!\n\n");
         goto _err1;
@@ -241,18 +253,20 @@ _err_pm:
     Nanosic_PM_free();
 _err_gpio:
     Nanosic_GPIO_release();
+    Nanosic_switch_regulator(false);
     return ret < 0 ? ret : -ENODEV;
 _err1:
+    Nanosic_switch_regulator(false);
     return ret < 0 ? ret : -ENODEV;
 }
 
-static int nanosic_803_remove(struct i2c_client *client)
+static void nanosic_803_remove(struct i2c_client *client)
 {
     struct nano_i2c_client* I2client=NULL;
 
     dbgprint(ALERT_LEVEL,"remove\n");
     if(initial == false)
-        return 0;
+        return;
     initial = false;
 
     I2client = i2c_get_clientdata(client);
@@ -284,14 +298,13 @@ static int nanosic_803_remove(struct i2c_client *client)
     /* The drained workqueue can no longer recreate an attached HID device. */
     Nanosic_input_release();
     Nanosic_GPIO_release();
+    Nanosic_switch_regulator(false);
 
     Nanosic_cache_release();
 
     mutex_unlock(&g_nanosic_lifecycle_lock);
 
     dbgprint(ALERT_LEVEL,"remove nanosic driver\n");
-
-    return 0;
 }
 
 static const struct of_device_id nanosic_803_of_match[] = {

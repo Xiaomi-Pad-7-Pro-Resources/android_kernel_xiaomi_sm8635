@@ -6,6 +6,7 @@
 #define _NANO_MACRO_H_
 
 #include <linux/device.h>
+#include <linux/of.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/version.h>
@@ -243,7 +244,9 @@ extern int  Nanosic_input_release(void);
 extern bool Nanosic_input_enabled(void);
 extern int  Nanosic_input_write(EM_PacketType type ,void *buf, size_t len);
 extern int  Nanosic_GPIO_recovery(struct nano_i2c_client* client , char* data, int datalen);
-extern int  Nanosic_GPIO_register(int vdd_pin, int reset_pin, int status_pin, int irq_pin,int sleep_pin);
+extern int  Nanosic_GPIO_register(int reset_pin, int status_pin, int irq_pin,int sleep_pin);
+extern int  Nanosic_regulator_init(struct device *dev, struct device_node *np);
+extern int  Nanosic_switch_regulator(bool on);
 extern int  Nanosic_Hall_notify(int hall_n_pin, int hall_s_pin);
 extern int  Nanosic_RequestGensor_notify(void);
 extern void Nanosic_GPIO_release(void);

@@ -25,20 +25,23 @@
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
+#include <linux/of.h>
+#include <linux/regulator/consumer.h>
 #include "nano_macro.h"
 #include <linux/interrupt.h>
 
 static bool registered  = false;
 static int gpio_reset_pin = -1;
 static int gpio_status_pin = -1;
-static int gpio_vdd_pin = -1;
 static int gpio_irq_pin = -1;
 static int gpio_sleep_pin = -1;
 static struct gpio_desc *gpio_reset_desc;
 static struct gpio_desc *gpio_status_desc;
-static struct gpio_desc *gpio_vdd_desc;
 static struct gpio_desc *gpio_irq_desc;
 static struct gpio_desc *gpio_sleep_desc;
+static struct regulator *vdd_regulator;
+static struct regulator *dvdd_regulator;
+static bool regulator_on;
 static int sleep_pin_status = -1;
 int g_wakeup_irqno  = -1;
 static bool wakeup_irq_registered;
@@ -84,13 +87,106 @@ static int nanosic_gpio_safe_levels_locked(void)
         else if (!err)
             sleep_pin_status = 0;
     }
-    if (gpio_vdd_desc) {
-        err = gpiod_direction_output_raw(gpio_vdd_desc, 0);
-        if (err && !first_err)
-            first_err = err;
+    return first_err;
+}
+
+/** ************************************************************************//**
+ *  @func Nanosic_regulator_init
+ *
+ *  @brief get the vdd/dvdd regulators and configure their voltages
+ *
+ ** */
+int Nanosic_regulator_init(struct device *dev, struct device_node *np)
+{
+    const char *name;
+    int ret;
+
+    ret = of_property_read_string(np, "nanosic,vdd-name", &name);
+    if (ret) {
+        dbgprint(ERROR_LEVEL,"failed to read nanosic,vdd-name:%d\n", ret);
+        return ret;
     }
 
-    return first_err;
+    vdd_regulator = devm_regulator_get(dev, name);
+    if (IS_ERR(vdd_regulator)) {
+        ret = PTR_ERR(vdd_regulator);
+        vdd_regulator = NULL;
+        dbgprint(ERROR_LEVEL,"failed to get vdd regulator:%d\n", ret);
+        return ret;
+    }
+
+    ret = of_property_read_string(np, "nanosic,dvdd-name", &name);
+    if (ret) {
+        dbgprint(ERROR_LEVEL,"failed to read nanosic,dvdd-name:%d\n", ret);
+        return ret;
+    }
+
+    dvdd_regulator = devm_regulator_get(dev, name);
+    if (IS_ERR(dvdd_regulator)) {
+        ret = PTR_ERR(dvdd_regulator);
+        dvdd_regulator = NULL;
+        dbgprint(ERROR_LEVEL,"failed to get dvdd regulator:%d\n", ret);
+        return ret;
+    }
+
+    ret = regulator_set_voltage(vdd_regulator, 3300000, 3300000);
+    if (ret) {
+        dbgprint(ERROR_LEVEL,"failed to set vdd voltage:%d\n", ret);
+        return ret;
+    }
+
+    ret = regulator_set_voltage(dvdd_regulator, 1800000, 1800000);
+    if (ret)
+        dbgprint(ERROR_LEVEL,"failed to set dvdd voltage:%d\n", ret);
+
+    return ret;
+}
+
+/** ************************************************************************//**
+ *  @func Nanosic_switch_regulator
+ *
+ *  @brief enable/disable vdd and dvdd in the stock order
+ *
+ ** */
+int Nanosic_switch_regulator(bool on)
+{
+    int ret;
+
+    if (on) {
+        if (!vdd_regulator || !dvdd_regulator)
+            return -ENODEV;
+        if (regulator_on)
+            return 0;
+
+        ret = regulator_enable(vdd_regulator);
+        if (ret) {
+            dbgprint(ERROR_LEVEL,"failed to enable vdd:%d\n", ret);
+            return ret;
+        }
+
+        ret = regulator_enable(dvdd_regulator);
+        if (ret) {
+            dbgprint(ERROR_LEVEL,"failed to enable dvdd:%d\n", ret);
+            regulator_disable(vdd_regulator);
+            return ret;
+        }
+
+        regulator_on = true;
+        return 0;
+    }
+
+    if (!regulator_on)
+        return 0;
+
+    ret = regulator_disable(dvdd_regulator);
+    if (ret)
+        dbgprint(ERROR_LEVEL,"failed to disable dvdd:%d\n", ret);
+    ret = regulator_disable(vdd_regulator);
+    if (ret)
+        dbgprint(ERROR_LEVEL,"failed to disable vdd:%d\n", ret);
+    regulator_on = false;
+
+    return 0;
 }
 
 /** ************************************************************************//**
@@ -127,18 +223,16 @@ Nanosic_wakeup_irq(int irq, void *dev_id)
  *
  ** */
 int
-Nanosic_GPIO_register(int vdd_pin,int reset_pin, int status_pin, int irq_pin,int sleep_pin)
+Nanosic_GPIO_register(int reset_pin, int status_pin, int irq_pin,int sleep_pin)
 {
     bool irq_requested = false;
     bool reset_requested = false;
     bool sleep_requested = false;
     bool status_requested = false;
-    bool vdd_requested = false;
     int err;
 
-    if (!gpio_is_valid(vdd_pin) || !gpio_is_valid(reset_pin) ||
-        !gpio_is_valid(status_pin) || !gpio_is_valid(irq_pin) ||
-        !gpio_is_valid(sleep_pin)) {
+    if (!gpio_is_valid(reset_pin) || !gpio_is_valid(status_pin) ||
+        !gpio_is_valid(irq_pin) || !gpio_is_valid(sleep_pin)) {
         dbgprint(ERROR_LEVEL,"invalid pin value\n");
         return -EINVAL;
     }
@@ -157,12 +251,10 @@ Nanosic_GPIO_register(int vdd_pin,int reset_pin, int status_pin, int irq_pin,int
 
     gpio_reset_desc = gpio_to_desc(reset_pin);
     gpio_status_desc = gpio_to_desc(status_pin);
-    gpio_vdd_desc = gpio_to_desc(vdd_pin);
     gpio_irq_desc = gpio_to_desc(irq_pin);
     gpio_sleep_desc = gpio_to_desc(sleep_pin);
     if (IS_ERR_OR_NULL(gpio_reset_desc) ||
         IS_ERR_OR_NULL(gpio_status_desc) ||
-        IS_ERR_OR_NULL(gpio_vdd_desc) ||
         IS_ERR_OR_NULL(gpio_irq_desc) ||
         IS_ERR_OR_NULL(gpio_sleep_desc)) {
         err = -ENODEV;
@@ -171,10 +263,9 @@ Nanosic_GPIO_register(int vdd_pin,int reset_pin, int status_pin, int irq_pin,int
 
     gpio_reset_pin = reset_pin;
     gpio_status_pin = status_pin;
-    gpio_vdd_pin = vdd_pin;
     gpio_irq_pin = irq_pin;
     gpio_sleep_pin = sleep_pin;
-    dbgprint(ERROR_LEVEL,"Nanosic_GPIO_register :gpio_reset_pin:%d,gpio_status_pin:%d,gpio_vdd_pin:%d,gpio_irq_pin:%d\n",gpio_reset_pin,gpio_status_pin,gpio_vdd_pin,gpio_irq_pin);
+    dbgprint(ERROR_LEVEL,"Nanosic_GPIO_register :gpio_reset_pin:%d,gpio_status_pin:%d,gpio_irq_pin:%d,gpio_sleep_pin:%d\n",gpio_reset_pin,gpio_status_pin,gpio_irq_pin,gpio_sleep_pin);
 
     err = gpio_request(gpio_reset_pin,"nanosic-reset");
     if (err)
@@ -196,11 +287,6 @@ Nanosic_GPIO_register(int vdd_pin,int reset_pin, int status_pin, int irq_pin,int
         goto err_free;
     irq_requested = true;
 
-    err = gpio_request(gpio_vdd_pin,"nanosic-vdd");
-    if (err)
-        goto err_free;
-    vdd_requested = true;
-
     err = gpiod_direction_output_raw(gpio_reset_desc,0);
     if (err)
         goto err_safe;
@@ -211,9 +297,6 @@ Nanosic_GPIO_register(int vdd_pin,int reset_pin, int status_pin, int irq_pin,int
     if (err)
         goto err_safe;
     err = gpiod_direction_input(gpio_irq_desc);
-    if (err)
-        goto err_safe;
-    err = gpiod_direction_output_raw(gpio_vdd_desc,1);
     if (err)
         goto err_safe;
 
@@ -252,8 +335,6 @@ err_safe:
     if (nanosic_gpio_safe_levels_locked())
         dbgprint(ERROR_LEVEL,"failed to put GPIOs in safe state\n");
 err_free:
-    if (vdd_requested)
-        gpio_free(gpio_vdd_pin);
     if (irq_requested)
         gpio_free(gpio_irq_pin);
     if (status_requested)
@@ -265,12 +346,10 @@ err_free:
 err_clear:
     gpio_reset_desc = NULL;
     gpio_status_desc = NULL;
-    gpio_vdd_desc = NULL;
     gpio_irq_desc = NULL;
     gpio_sleep_desc = NULL;
     gpio_reset_pin = -1;
     gpio_status_pin = -1;
-    gpio_vdd_pin = -1;
     gpio_irq_pin = -1;
     gpio_sleep_pin = -1;
     g_wakeup_irqno = -1;
@@ -868,17 +947,14 @@ Nanosic_GPIO_release(void)
     gpio_free(gpio_sleep_pin);
     gpio_free(gpio_status_pin);
     gpio_free(gpio_reset_pin);
-    gpio_free(gpio_vdd_pin);
 
     registered = false;
     gpio_reset_desc = NULL;
     gpio_status_desc = NULL;
-    gpio_vdd_desc = NULL;
     gpio_irq_desc = NULL;
     gpio_sleep_desc = NULL;
     gpio_reset_pin = -1;
     gpio_status_pin = -1;
-    gpio_vdd_pin = -1;
     gpio_irq_pin = -1;
     gpio_sleep_pin = -1;
     g_wakeup_irqno = -1;
