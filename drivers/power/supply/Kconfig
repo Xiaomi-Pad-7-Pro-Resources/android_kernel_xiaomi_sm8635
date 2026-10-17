@@ -1031,6 +1031,13 @@ config MI_MULTI_CHG_CFG
 	help
 	  Say y here to support multi charging config in one product
 
+config CHARGER_PARTITION
+	tristate "charger partition"
+	help
+	  Say y here to support charger partition.  The stock firmware ships
+	  this as charger_partition.ko; qti_battery_charger exports
+	  is_eu_model/pps_ptf/charger_partition_poweroffmode through it.
+
 source "drivers/power/supply/qcom/Kconfig"
 
 endif # POWER_SUPPLY

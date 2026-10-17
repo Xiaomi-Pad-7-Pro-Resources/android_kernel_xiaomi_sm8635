@@ -23,7 +23,7 @@
 #include <linux/soc/qcom/pmic_glink.h>
 #include <linux/soc/qcom/battery_charger.h>
 #include <linux/soc/qcom/panel_event_notifier.h>
-//#include "charger_partition.h"
+#include "charger_partition.h"
 #include "qti_battery_charger.h"
 
 /* pen_connect_strategy start */
@@ -7298,7 +7298,8 @@ static ssize_t charger_partition_poweroffmode_show(struct class *c,
 static CLASS_ATTR_RW(charger_partition_poweroffmode);
 #endif
 
-#if defined(CONFIG_MI_O16U_EUPD) || defined(CONFIG_MI_O11_EMPTY_BATTERY)
+#if defined(CONFIG_MI_O16U_EUPD) || defined(CONFIG_MI_O11_EMPTY_BATTERY) || \
+    defined(CONFIG_MI_EU_REGION_OPEN_POWER)
 static ssize_t is_eu_model_store(struct class *c,
 					struct class_attribute *attr,
 					const char *buf, size_t count)
@@ -10475,7 +10476,8 @@ static struct attribute *battery_class_attrs[] = {
 #if defined(CONFIG_MI_O11_EMPTY_BATTERY)
 	&class_attr_charger_partition_poweroffmode.attr,
 #endif
-#if defined(CONFIG_MI_O16U_EUPD) || defined(CONFIG_MI_O11_EMPTY_BATTERY)
+#if defined(CONFIG_MI_O16U_EUPD) || defined(CONFIG_MI_O11_EMPTY_BATTERY) || \
+    defined(CONFIG_MI_EU_REGION_OPEN_POWER)
 	/* add for EEA 100W */
 	&class_attr_is_eu_model.attr,
 	&class_attr_pps_ptf.attr,
@@ -10662,7 +10664,8 @@ static void xm_charger_debug_info_print_work(struct work_struct *work)
 	if ((usb_present == 1) || (wls_present == 1)) {
 
 		rc = read_property_id(bcdev, pst, XM_PROP_FG_VENDOR_ID);
-#if defined(CONFIG_MI_O16U_EUPD) || defined(CONFIG_MI_O11_EMPTY_BATTERY)
+#if defined(CONFIG_MI_O16U_EUPD) || defined(CONFIG_MI_O11_EMPTY_BATTERY) || \
+    defined(CONFIG_MI_EU_REGION_OPEN_POWER)
 		/*add for EEA 100W*/
 		rc = read_property_id(bcdev, pst, XM_PROP_IS_EU_MODEL);
 		rc = read_property_id(bcdev, pst, XM_PROP_PPS_PTF);
