@@ -18,6 +18,7 @@
 #include <linux/mutex.h>
 #include <linux/timer.h>
 #include <linux/timex.h>
+#include <linux/xiaomi_keyboard.h>
 #include <linux/timekeeping.h>
 #include <linux/rtc.h>
 

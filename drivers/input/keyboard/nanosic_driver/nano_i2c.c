@@ -1,4 +1,4 @@
-﻿/** ***************************************************************************
+/** ***************************************************************************
  * @file nano_i2c.c
  *
  * @brief nanosic i2c client
@@ -110,6 +110,7 @@ Nanosic_i2c_specified_packets_detect(char *packet, size_t packet_len)
              nanosic_vendor_checksum_valid(packet, packet_len)) {
         keyboard_status = (unsigned char)data[4];
         gHallStatus = keyboard_status;
+        xiaomi_keypad_notify(keyboard_status, 0);
         connected = !data[13] && (keyboard_status & 0x63) == 0x23;
         if (connected && !Nanosic_input_enabled()) {
             ret = Nanosic_input_register();
@@ -481,6 +482,11 @@ Nanosic_i2c_parse(char* data, size_t datalen)
             case 0x19:
                 if (left < 21)
                     return -EPROTO;
+                /*
+                 * Lets the companion driver rewrite the report in place; it
+                 * leaves it untouched while the edge filter is disabled.
+                 */
+                xiaomi_touchpad_edge_filter((struct xiaomi_touchpad_report *)p);
                 Nanosic_input_write(EM_PACKET_TOUCH,p,21);
                 p += 21;
                 left -= 21;
