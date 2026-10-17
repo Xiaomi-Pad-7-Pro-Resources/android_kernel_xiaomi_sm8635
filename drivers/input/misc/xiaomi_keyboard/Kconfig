@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config INPUT_XIAOMI_KEYBOARD
+	tristate "Xiaomi keyboard companion driver"
+	depends on OF
+	help
+	  Companion driver for the Nanosic keyboard/touchpad found on Xiaomi
+	  tablets.  It exports the touchpad edge filter that the Nanosic driver
+	  calls into and exposes the keyboard status through sysfs.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called xiaomi_keyboard.
