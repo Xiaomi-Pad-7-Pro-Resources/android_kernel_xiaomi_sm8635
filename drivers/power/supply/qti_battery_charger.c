@@ -386,6 +386,7 @@ enum xm_property_id {
 	XM_PROP_LOW_FAST_PARA,
 	XM_PROP_LOWFAST_SW_PARA,
 	XM_PROP_SMART_SIC_MODE,
+	XM_PROP_OPEN_LOADSW,
 	XM_PROP_NVTFG_MONITOR_ISC,
 	XM_PROP_NVTFG_MONITOR_SOA,
 	XM_PROP_OVER_PEAK_FLAG,
@@ -456,14 +457,18 @@ enum xm_property_id {
 	XM_PROP_FG1_SEAL_SET,
 	XM_PROP_FG1_SEAL_STATE,
 	XM_PROP_FG1_DF_CHECK,
-#if defined (CONFIG_DUAL_FUEL_GAUGE)
-	XM_PROP_SLAVE_CHIP_OK,
-	XM_PROP_SLAVE_AUTHENTIC,
-#endif
-	XM_PROP_FG2_RM,
+#if defined(CONFIG_MI_CHG_UKE_ENUM)
 	XM_PROP_MAX_LIFE_VOL,
 	XM_PROP_MAX_LIFE_TEMP,
 	XM_PROP_OVER_VOL_DURATION,
+	XM_PROP_FG2_RM,
+	XM_PROP_UKE_ENUM_PAD_209,
+	XM_PROP_UKE_ENUM_PAD_210,
+#else
+	XM_PROP_SLAVE_CHIP_OK,
+	XM_PROP_SLAVE_AUTHENTIC,
+	XM_PROP_FG2_RM,
+#endif
 	XM_PROP_FG2_FCC,
 	XM_PROP_FG2_SOH,
 	XM_PROP_FG2_CYCLE,
@@ -516,18 +521,26 @@ enum xm_property_id {
 	XM_PROP_MAX_TEMP_TIME,
 	XM_PROP_HANDLE_STATE,
 	XM_PROP_HANDLE_STOP_CHARGING,
-	XM_PROP_SC760X_CHIP_OK,
-	XM_PROP_SC760X_SLAVE_CHIP_OK,
-	// XM_PROP_SC760X_IBATT_LIMIT,
-	XM_PROP_SC760X_SLAVE_IBATT_LIMIT,
-	XM_PROP_DUMMY_0,
-	XM_PROP_DUMMY_1,
-	XM_PROP_DUMMY_2,
+	XM_PROP_CHG_PAD_0,
+	XM_PROP_CHG_PAD_1,
+	XM_PROP_CHG_PAD_2,
 	XM_PROP_QBG_CURR,
-#if defined(CONFIG_MI_O16U_EUPD) || defined(CONFIG_MI_O11_EMPTY_BATTERY)
+#if defined(CONFIG_MI_CHG_UKE_ENUM)
+	XM_PROP_UKE_ENUM_PAD_267,
+	XM_PROP_XMFG_FW_VERSION,
+	XM_PROP_BATT_SOX,
+	XM_PROP_XMFG_UPDATE_REGION,
+	XM_PROP_QMAX,
+	XM_PROP_QMAX_CYCLECOUNT,
+	XM_PROP_CHARGE_ABSOC,
+	XM_PROP_MIN_LIFE_VOL,
+	XM_PROP_MIN_LIFE_TEMP,
+	XM_PROP_COUNT_LEVEL1,
+	XM_PROP_COUNT_LEVEL2,
+	XM_PROP_COUNT_LEVEL3,
+#endif
 	XM_PROP_IS_EU_MODEL,
 	XM_PROP_PPS_PTF,
-#endif
 #if defined(CONFIG_MI_O11_EMPTY_BATTERY)
 	XM_PROP_CP_FSW,
 	XM_PROP_CP_IOUT,
@@ -571,6 +584,8 @@ enum xm_chg_debug_type {
 	CHG_CLOUD_FOD_DATA,
 	CHG_UI_CLOUD_DYNAMIC_SHUTDOWN_CODE,
 	CHG_UI_BATT_SN_CODE,
+	CHG_UI_MANUFACTURING_DATE_CODE,
+	CHG_UI_FIRST_USAGE_DATE_CODE,
 	CHG_DEBUG_TYPE_MAX,
 };
 
@@ -853,6 +868,8 @@ struct battery_chg_dev {
 	char				cloud_fod_data[CHG_DEBUG_DATA_LEN];
 	char				cloud_dynamic_shutdown_data[CHG_DEBUG_DATA_LEN];
 	char				batt_sn_data[CHG_DEBUG_DATA_LEN];
+	char				manufacturing_date_data[CHG_DEBUG_DATA_LEN];
+	char				first_usage_date_data[CHG_DEBUG_DATA_LEN];
 	bool				battery_auth;
 	bool				slave_battery_auth;
 	bool				slave_fg_verify_flag;
@@ -1499,6 +1516,14 @@ static void handle_message(struct battery_chg_dev *bcdev, void *data,
 			} else if (chg_debug_data->type == CHG_UI_BATT_SN_CODE) {
 				memset(bcdev->batt_sn_data, '\0', CHG_DEBUG_DATA_LEN);
 				memcpy(bcdev->batt_sn_data, chg_debug_data->data, CHG_DEBUG_DATA_LEN);
+				ack_set = true;
+			} else if (chg_debug_data->type == CHG_UI_MANUFACTURING_DATE_CODE) {
+				memset(bcdev->manufacturing_date_data, '\0', CHG_DEBUG_DATA_LEN);
+				memcpy(bcdev->manufacturing_date_data, chg_debug_data->data, CHG_DEBUG_DATA_LEN);
+				ack_set = true;
+			} else if (chg_debug_data->type == CHG_UI_FIRST_USAGE_DATE_CODE) {
+				memset(bcdev->first_usage_date_data, '\0', CHG_DEBUG_DATA_LEN);
+				memcpy(bcdev->first_usage_date_data, chg_debug_data->data, CHG_DEBUG_DATA_LEN);
 				ack_set = true;
 			} else if (chg_debug_data->type == CHG_UI_SLAVE_SOH_SN_CODE) {
                                 memset(bcdev->ui_slave_soh_data, '\0', CHG_DEBUG_DATA_LEN);
@@ -4704,7 +4729,7 @@ static ssize_t open_loadsw_store(struct class *c,
 		return -EINVAL;
 
 	rc = write_property_id(bcdev, &bcdev->psy_list[PSY_TYPE_XM],
-					XM_PROP_OVER_PEAK_FLAG, val);
+					XM_PROP_OPEN_LOADSW, val);
 	if (rc < 0)
 		return rc;
 
@@ -4719,11 +4744,11 @@ static ssize_t open_loadsw_show(struct class *c,
 	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
 	int rc;
 
-	rc = read_property_id(bcdev, pst, XM_PROP_OVER_PEAK_FLAG);
+	rc = read_property_id(bcdev, pst, XM_PROP_OPEN_LOADSW);
 	if (rc < 0)
 		return rc;
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_OVER_PEAK_FLAG]);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_OPEN_LOADSW]);
 }
 static CLASS_ATTR_RW(open_loadsw);
 
@@ -7243,8 +7268,7 @@ static ssize_t pd_verifed_show(struct class *c,
 }
 static CLASS_ATTR_RW(pd_verifed);
 
-#if defined(CONFIG_MI_O16U_EUPD) || defined(CONFIG_MI_O11_EMPTY_BATTERY)
-/* add for EEA 100W*/
+#if defined(CONFIG_MI_O11_EMPTY_BATTERY)
 static ssize_t charger_partition_poweroffmode_store(struct class *c,
 					struct class_attribute *attr,
 					const char *buf, size_t count)
@@ -8486,6 +8510,7 @@ static ssize_t fg2_soh_sn_show(struct class *c,
 }
 static CLASS_ATTR_RO(fg2_soh_sn);
 
+#if defined(CONFIG_MI_CHG_UKE_ENUM)
 static ssize_t batt_sn_show(struct class *c,
 				struct class_attribute *attr, char *buf)
 {
@@ -8505,6 +8530,81 @@ static ssize_t batt_sn_show(struct class *c,
 	return scnprintf(buf, PAGE_SIZE, "%s", bcdev->batt_sn_data);
 }
 static CLASS_ATTR_RO(batt_sn);
+#endif /* CONFIG_MI_CHG_UKE_ENUM */
+
+static ssize_t manufacturing_date_show(struct class *c,
+				       struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+							battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	struct chg_debug_msg req_msg = { { 0 } };
+	int rc;
+
+	req_msg.property_id = XM_PROP_CHG_DEBUG;
+	req_msg.type = CHG_UI_MANUFACTURING_DATE_CODE;
+	req_msg.hdr.owner = MSG_OWNER_BC;
+	req_msg.hdr.type = MSG_TYPE_REQ_RESP;
+	req_msg.hdr.opcode = pst->opcode_get;
+
+	rc = battery_chg_write(bcdev, &req_msg, sizeof(req_msg));
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%s", bcdev->manufacturing_date_data);
+}
+static CLASS_ATTR_RO(manufacturing_date);
+
+static ssize_t first_usage_date_show(struct class *c,
+				     struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+							battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	struct chg_debug_msg req_msg = { { 0 } };
+	int rc;
+
+	req_msg.property_id = XM_PROP_CHG_DEBUG;
+	req_msg.type = CHG_UI_FIRST_USAGE_DATE_CODE;
+	req_msg.hdr.owner = MSG_OWNER_BC;
+	req_msg.hdr.type = MSG_TYPE_REQ_RESP;
+	req_msg.hdr.opcode = pst->opcode_get;
+
+	rc = battery_chg_write(bcdev, &req_msg, sizeof(req_msg));
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%s", bcdev->first_usage_date_data);
+}
+
+static ssize_t first_usage_date_store(struct class *c,
+				      struct class_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+							battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	struct chg_debug_msg req_msg = { { 0 } };
+	int rc;
+
+	req_msg.property_id = XM_PROP_CHG_DEBUG;
+	req_msg.type = CHG_UI_FIRST_USAGE_DATE_CODE;
+	req_msg.hdr.owner = MSG_OWNER_BC;
+	req_msg.hdr.type = MSG_TYPE_REQ_RESP;
+	req_msg.hdr.opcode = pst->opcode_set;
+
+	/* the firmware reads a fixed 200 byte field, never a NUL terminated string */
+	if (count > sizeof(req_msg.data))
+		count = sizeof(req_msg.data);
+	strncpy(req_msg.data, buf, count);
+
+	rc = battery_chg_write(bcdev, &req_msg, sizeof(req_msg));
+	if (rc < 0)
+		return rc;
+
+	return count;
+}
+static CLASS_ATTR_RW(first_usage_date);
 
 static ssize_t calc_rvalue_show(struct class *c,
 					struct class_attribute *attr, char *buf)
@@ -8602,6 +8702,7 @@ static ssize_t maxtemptime_show(struct class *c,
 }
 static CLASS_ATTR_RO(maxtemptime);
 
+#if defined(CONFIG_MI_CHG_UKE_ENUM)
 static ssize_t max_life_vol_show(struct class *c,
 					struct class_attribute *attr, char *buf)
 {
@@ -8649,6 +8750,151 @@ static ssize_t over_vol_duration_show(struct class *c,
 	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_OVER_VOL_DURATION]);
 }
 static CLASS_ATTR_RO(over_vol_duration);
+
+static ssize_t isc_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_NVTFG_MONITOR_ISC);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_NVTFG_MONITOR_ISC]);
+}
+static CLASS_ATTR_RO(isc);
+
+static ssize_t qmax_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_QMAX);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_QMAX]);
+}
+static CLASS_ATTR_RO(qmax);
+
+static ssize_t qmax_cyclecount_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_QMAX_CYCLECOUNT);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_QMAX_CYCLECOUNT]);
+}
+static CLASS_ATTR_RO(qmax_cyclecount);
+
+static ssize_t charge_absoc_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_CHARGE_ABSOC);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_CHARGE_ABSOC]);
+}
+static CLASS_ATTR_RO(charge_absoc);
+
+static ssize_t min_life_vol_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_MIN_LIFE_VOL);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_MIN_LIFE_VOL]);
+}
+static CLASS_ATTR_RO(min_life_vol);
+
+static ssize_t min_life_temp_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_MIN_LIFE_TEMP);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_MIN_LIFE_TEMP]);
+}
+static CLASS_ATTR_RO(min_life_temp);
+
+static ssize_t count_level1_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_COUNT_LEVEL1);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_COUNT_LEVEL1]);
+}
+static CLASS_ATTR_RO(count_level1);
+
+static ssize_t count_level2_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_COUNT_LEVEL2);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_COUNT_LEVEL2]);
+}
+static CLASS_ATTR_RO(count_level2);
+
+static ssize_t count_level3_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_COUNT_LEVEL3);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[XM_PROP_COUNT_LEVEL3]);
+}
+static CLASS_ATTR_RO(count_level3);
+#endif /* CONFIG_MI_CHG_UKE_ENUM */
 
 static ssize_t handle_state_show(struct class *c,
 					struct class_attribute *attr, char *buf)
@@ -10188,7 +10434,11 @@ static struct attribute *battery_class_attrs[] = {
 	&class_attr_ui_slave_soh.attr,
 	&class_attr_soh_sn.attr,
 	&class_attr_fg2_soh_sn.attr,
+#if defined(CONFIG_MI_CHG_UKE_ENUM)
 	&class_attr_batt_sn.attr,
+#endif
+	&class_attr_manufacturing_date.attr,
+	&class_attr_first_usage_date.attr,
 	&class_attr_calc_rvalue.attr,
 	&class_attr_dp.attr,
 	&class_attr_dm.attr,
@@ -10197,9 +10447,20 @@ static struct attribute *battery_class_attrs[] = {
 	&class_attr_maxtemp_occurtime.attr,
 	&class_attr_runtime.attr,
 	&class_attr_maxtemptime.attr,
+#if defined(CONFIG_MI_CHG_UKE_ENUM)
 	&class_attr_max_life_vol.attr,
 	&class_attr_max_life_temp.attr,
 	&class_attr_over_vol_duration.attr,
+	&class_attr_isc.attr,
+	&class_attr_qmax.attr,
+	&class_attr_qmax_cyclecount.attr,
+	&class_attr_charge_absoc.attr,
+	&class_attr_min_life_vol.attr,
+	&class_attr_min_life_temp.attr,
+	&class_attr_count_level1.attr,
+	&class_attr_count_level2.attr,
+	&class_attr_count_level3.attr,
+#endif
 	&class_attr_handle_state.attr,
 	&class_attr_handle_stop_charging.attr,
 	&class_attr_dod_count.attr,
@@ -10211,9 +10472,11 @@ static struct attribute *battery_class_attrs[] = {
 #endif
 	&class_attr_qbg_curr.attr,
 	&class_attr_ut_test.attr,
+#if defined(CONFIG_MI_O11_EMPTY_BATTERY)
+	&class_attr_charger_partition_poweroffmode.attr,
+#endif
 #if defined(CONFIG_MI_O16U_EUPD) || defined(CONFIG_MI_O11_EMPTY_BATTERY)
 	/* add for EEA 100W */
-	&class_attr_charger_partition_poweroffmode.attr,
 	&class_attr_is_eu_model.attr,
 	&class_attr_pps_ptf.attr,
 #endif

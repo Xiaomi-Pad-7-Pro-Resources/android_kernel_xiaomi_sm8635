@@ -941,6 +941,23 @@ config DUAL_FUEL_GAUGE
 	help
 	  Say y here to enable Bq fuel gauge
 
+config MI_CHG_UKE_ENUM
+	bool "Use the uke (Xiaomi Pad 7) pmic-glink charger property layout"
+	default n
+	help
+	  The Xiaomi sm8635 tablets do not share one charger property-ID
+	  numbering with the ADSP firmware.  muyu (Pad 7 Pro) and uke
+	  (Pad 7) were both dumped and their qti_battery_charger.ko were
+	  disassembled; the property IDs they put on the PMIC-Glink wire
+	  differ in the 205..210 block and in the post-QBG_CURR tail.
+
+	  Say y here to select the uke layout.  Leave it off for muyu,
+	  which is the layout the in-tree enum is based on.
+
+	  Getting this wrong does not fail the build: every charger sysfs
+	  node that reads a property through PMIC-Glink would silently
+	  return data for the wrong property.
+
 config MI_ENABLE_DP
 	tristate "enable or disable displayPort config"
 	help
