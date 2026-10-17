@@ -550,6 +550,15 @@ config KINECTICS_XR_NORDIC
 	   this also parses the gpios and interrupts from device tree and sets
 	   the gpios and interrupt handler for handling the interrupt.
 
+config MI_HALL
+	tristate "Xiaomi hall sensor driver"
+	depends on INPUT && GPIOLIB && OF
+	default n
+	help
+	  This driver reports the lid and tablet mode switches of a convertible
+	  through an input device.  To compile this driver as a module, choose M
+	  here.
+
 source "drivers/misc/rtimd-i2c/Kconfig"
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
