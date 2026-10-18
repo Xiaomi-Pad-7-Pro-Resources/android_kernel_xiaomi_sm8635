@@ -1,0 +1,4 @@
+charger_partition.ko
+dump_display.ko
+hwid.ko
+mi_thermal_interface.ko

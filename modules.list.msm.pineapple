@@ -55,7 +55,6 @@ camcc-pineapple.ko
 qcom-ipcc.ko
 stub-regulator.ko
 gdsc-regulator.ko
-gh_virt_wdt.ko
 gh_arm_drv.ko
 gh_cpusys_vm_mem_access.ko
 gh_dbl.ko
@@ -68,7 +67,6 @@ hwkm.ko
 crypto-qti.ko
 ufshcd-crypto-qti.ko
 mdt_loader.ko
-debug-regulator.ko
 phy-qcom-ufs.ko
 phy-qcom-ufs-qmp-v4-crow.ko
 phy-qcom-ufs-qmp-v4-pineapple.ko

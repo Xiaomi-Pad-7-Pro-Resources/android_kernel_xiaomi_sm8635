@@ -1,0 +1,8 @@
+aw882xx_dlkm.ko
+charger_partition.ko
+fs19xx_dlkm.ko
+nanosic_driver.ko
+nt36532_touch.ko
+xiaomi_hall.ko
+xiaomi_keyboard.ko
+xiaomi_touch.ko
